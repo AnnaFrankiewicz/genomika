@@ -1,0 +1,145 @@
+library(readxl)
+library(ggplot2)
+library(ggmap)   # mapa jako macierz
+library(maps)
+library(mapdata)
+# library(Hmisc)      # do uzupelniania pustych wartosci
+
+data <- read_excel("C:/Users/Anna/Desktop/genom mapa/indicator life_expectancy_at_birth.xlsx",sheet = "Data", na = "empty")
+
+# nazwa w data dla kolumny z panstwami
+colnames(data)[1] = "Country"
+colnames(data)[-1] = substr(colnames(data),1,4)[-1]
+
+# ile pustych wartosci
+sum(is.na(data))    # 12 563
+
+# mapa
+data(worldMapEnv)
+world <- map_data("world")
+
+# nazwa w "world" dla kolumny z panstwami
+colnames(world)[5] = "Country"
+
+# panstwa z "world"
+coun.world = sort(names(table(world$Country)))
+
+# ile mamy panstw wspolnych?
+length(intersect(coun.world,data$Country))  # 204
+
+
+###########################################################
+
+# roznica symetryczna
+coun.world = sort(names(table(world$Country)))  # ODSWIEZ ! ! !
+(roznica = sort(union(paste(setdiff(coun.world,data$Country),"- W"), paste(setdiff(data$Country,coun.world),"- D"))))  # 104
+
+# poprawiam pojedyncze panstwa
+world$Country[world$Country %in% c("Trinidad","Tobago")] = "Trinidad and Tobago"
+world$Country[world$Country == "USA"] = "United States"
+world$Country[world$Country == "UK"] = "United Kingdom"
+world$Country[world$Country == "Wallis and Futuna"] = "Wallis et Futuna"
+world$Country[world$Country %in% c("Antigua","Barbuda")] = "Antigua and Barbuda"
+world$Country[world$Country == "Cook Islands"] = "Cook Is"
+world$Country[world$Country == "Cocos Islands"] = "Cocos Island"
+world$Country[world$Country == "Virgin Islands"] = "Virgin Islands (U.S.)"
+world$Country[world$Country == "Slovakia"] = "Slovak Republic"
+world$Country[world$Country == "Macedonia"] = "Macedonia, FYR"
+world$Country[world$Country == "Falkland Islands"] = "Falkland Is (Malvinas)"
+world$Country[world$Country == "Democratic Republic of the Congo"] = "Congo, Dem. Rep."
+world$Country[world$Country == "Republic of Congo"] = "Congo, Rep."
+world$Country[world$Country == "Faroe Islands"] = "Faeroe Islands"
+world$Country[world$Country == "Kyrgyzstan"] = "Kyrgyz Republic"
+world$Country[world$Country == "Laos"] = "Lao"
+world$Country[world$Country == "Micronesia"] = "Micronesia, Fed. Sts."
+world$Country[world$Country == "Pitcairn Islands"] = "Pitcairn"
+world$Country[world$Country == "Saint Pierre and Miquelon"] = "St.-Pierre-et-Miquelon"
+world$Country[world$Country == "Saint Helena"] = "St. Helena"
+world$Country[world$Country == "Saint Lucia"] = "St. Lucia"
+world$Country[world$Country == "Saint Martin"] = "St. Martin"
+world$Country[world$Country %in% c("Nevis","Saint Kitts")] = "St. Kitts and Nevis"
+world$Country[world$Country %in% c("Grenadines","Saint Vincent")] = "St. Vincent and the Grenadines"
+
+# sa puste, usuwam je
+data = data[!data$Country == "West Germany" & !data$Country == "East Germany",]
+
+# zbieram China, Macao i Hong Kong w jedno, w kazdym roku mam dane
+China = colSums(as.matrix(data[data$Country %in% c("Macao, China","China","Hong Kong, China"),2:218]))/3
+# zastapie oserwacje z China na nowa zebrana China
+data[data$Country == "China",2:218] = China
+# usuwam Macao i Hong Kong
+data = data[!data$Country == "Macao, China" & !data$Country == "Hong Kong, China",]
+rm(China)
+
+# usuwam 
+data = data[!data$Country == "Serbia and Montenegro" & !data$Country == "Serbia excluding Kosovo",]
+
+world$Country[world$Country == "Ivory Coast"] = "Cote d'Ivoire"
+world$Country[world$Country == "Vatican"] = "Holy See"
+#---------------------------------------------------------------------------------
+
+######################################## merge
+mer = merge(world,data)
+mer = mer[order(mer$order),]
+
+Antarktyda = world[world$Country == "Antarctica",]
+
+ggplot() + geom_polygon(data = proba, aes(x=long, y = lat, group = group, fill = proba[,60])) + 
+  coord_fixed(1.3)
+rm(coun.world,roznica)
+########################################## SHINY
+
+require(shiny)
+
+ui<-fluidPage(
+  
+  headerPanel("Średnia długość życia w poszczególnych państwach i latach"),
+  
+  # suwak dla roku
+  sidebarPanel(
+    sliderInput("year", 
+                "Wybierz rok obserwacji lub włącz animację:", 
+                min = 1800,
+                max = 2016, 
+                value = 1800,
+                animate = animationOptions(interval = 1800, loop=T), # samozmieniajacy sie rok
+                width = '400px',
+                sep = " "
+                ,ticks = TRUE
+    )
+  ),
+  
+  mainPanel(
+    plotOutput("plot")  # nazwa mojego wykresu
+  ) 
+)
+server <-function(input, output){
+  # aktywuj slider
+  dane <- reactive({
+    dist(input$year)
+  })
+  
+  output$plot <- renderPlot({
+    life_expectancy = mer[,as.character(input$year)]
+    # CALY WYKRES
+    ggplot(data = mer) + geom_polygon(aes(x = mer$long, y = mer$lat, fill = life_expectancy, group = group) ) +
+      labs(x = "", y = "") +
+      coord_fixed(1.3) +
+      theme(
+        axis.text = element_blank(),
+        axis.line = element_blank(),
+        axis.ticks = element_blank(),
+        panel.border = element_blank()
+        #,panel.grid = element_blank()
+        ) +
+      geom_polygon(data = Antarktyda, aes(x = Antarktyda$long, y = Antarktyda$lat, group = group),fill = "#FFE5B4") +
+      theme_void() +
+      theme(legend.title = element_text( size=12, face="bold"))+
+      scale_fill_continuous(name="średnia długość życia") +
+      theme(legend.position = "bottom", legend.direction = "horizontal", legend.box.just = "right")
+    
+      
+  })  
+}  
+
+shinyApp(ui,server)
