@@ -1,0 +1,65 @@
+library(ggplot2)
+
+otu = read.table("E:/genomika/genom lazienki/otu.tsv.txt", sep="\t", colClasses = "character", header=T)
+sampleinfo = read.table("E:/genomika/genom lazienki/sample-info.tsv.txt", sep="\t", colClasses = "character", header=T)
+tax = read.table("E:/genomika/genom lazienki/tax.tsv.txt", sep="\t", colClasses = "character", header=T)
+
+
+index = which(tax$Rank5 == "f__Chitinophagaceae") # indeksy gdzie jest wybrana bakteria
+tax_new = tax[index,1]  # zmniejszony tax, nazwa bakterii
+
+index_2 = which(otu$X %in% tax_new)   # jest dobrze posortowane wiec index = index_2
+rm(index_2)
+otu_new = otu[index,]
+
+# naprawa nazw kolumn
+colnames(otu_new)[-1] = substr(colnames(otu_new)[-1],2,nchar(colnames(otu_new)[-1])) 
+#colnames(otu_new)
+
+#colSums(otu_new)[-1] # nie dziala
+
+# przygotowuje się do zamiany character na numeric
+col_otu_new = colnames(otu_new)
+otu_new = as.data.frame(matrix(as.numeric(as.matrix(otu_new)),nrow = 63),row.names = tax_new)
+colnames(otu_new) = col_otu_new
+
+class(otu_new[4,7])  # numeric
+
+# zliczamy ile bylo bakterii z naszego rodzaju w kazdej probce
+# otu_sumy jest wektorem ale z nazwanymi wartosciami
+otu_sumy = colSums(otu_new)[-1]
+
+class(otu_sumy)
+#otu_sumy
+#names(otu_sumy) # nazwy probek
+
+# zmniejszam sampleinfo biorąc kolumny z nazwa probki,płcią i miejscem w łazience, 
+# i wiersze (probki) gdzie sa nasze bakterie
+sampleinfo_new = sampleinfo[which(names(otu_sumy) %in% sampleinfo$X.SampleID),c("X","gender_bathroom","Description")]
+# wyszlo, ze w 109 probkach czyli we wszystkich jest nasza bakteria
+
+# dataframe z otu_sumy zeby zmergować
+
+otu_sumy = as.data.frame(otu_sumy)
+
+# wspolna zmienna do mergowania
+otu_sumy$X = rownames(otu_sumy)
+
+# merge
+data = merge(otu_sumy,sampleinfo_new, by = "X")
+# head(data)
+
+# 5 pierwszych jest zle
+
+data = data[6:109,]
+data = data[order(data$Description),]
+# faceci = data[which("Male" == data$gender_bathroom),]
+# faceci = faceci[order(faceci$Description),]
+# babki = data[which("Female" == data$gender_bathroom),]
+rm(index,col_otu_new,otu,otu_new,otu_sumy, sampleinfo, sampleinfo_new,tax,tax_new)
+amount = data$otu_sumy
+sex = data$gender_bathroom
+ggplot(data, aes ( x =otu_sumy , y = Description, size = amount, fill = sex )) + geom_point(shape = 21)  + ggtitle("Chitinophagaceae") +
+  theme(
+  axis.line = element_blank()) +
+  labs(x = "", y = "")
